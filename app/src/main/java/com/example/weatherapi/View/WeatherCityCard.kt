@@ -23,6 +23,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -32,6 +33,12 @@ import java.time.format.DateTimeFormatter
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.navigation.NavController
+import com.example.weatherapi.Database.AppDatabase
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
+import androidx.compose.runtime.LaunchedEffect
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
@@ -50,6 +57,16 @@ fun WeatherCityCard(
 
     var i = -1 // Initialiser i à -1 pour marquer l'indice comme invalide au départ
     val image: Painter = painterResource(id = com.example.weatherapi.R.drawable.weather_image)
+
+    val context = LocalContext.current;
+    val db = remember { AppDatabase.getDatabase(context) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(city) {
+        scope.launch {
+            favoris = db.cityInfoDao().isCityFavorite(city.id).first()
+        }
+    }
 
     // Vérifier si les données sont disponibles avant de traiter la liste
     city.weatherInfo?.hourly?.time?.let { timeList ->
@@ -100,11 +117,18 @@ fun WeatherCityCard(
                 Icon(
                     imageVector = if (favoris) Icons.Filled.Star else Icons.Outlined.Star,
                     contentDescription = if (favoris) "Retirer des favoris" else "Ajouter aux favoris",
-                    tint = if (favoris) Color(0xFFFFD700) else Color.White, // Couleur dorée si favori
+                    tint = if (favoris) Color(0xFFFFD700) else Color.White,
                     modifier = Modifier
                         .size(30.dp)
                         .clickable {
                             favoris = !favoris
+                            scope.launch {
+                                if (favoris) {
+                                    db.cityInfoDao().insertCity(cityInfo = city)
+                                } else {
+                                    db.cityInfoDao().deleteCity(cityInfo = city)
+                                }
+                            }
                         }
                 )
             }

@@ -1,7 +1,10 @@
 package com.example.weatherapi.Controller
 
+import androidx.compose.ui.platform.LocalContext
+import com.example.weatherapi.Dao.SearchResultDao
 import com.example.weatherapi.Model.CityInfo
 import com.example.weatherapi.Model.CityResponse
+import com.example.weatherapi.Model.SearchResult
 import com.example.weatherapi.Model.WeatherModel
 import java.util.logging.Level
 import java.util.logging.Logger
@@ -11,11 +14,14 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import kotlinx.coroutines.flow.map
+import java.time.LocalDateTime
 
-class WeatherController {
+class WeatherController (private val searchResultDao: SearchResultDao)  {
     private val client = HttpClient(CIO)
     private val logger = Logger.getLogger(WeatherController::class.java.name)
     private val gson = Gson()
+
 
     suspend fun fetchCities(cityName: String): MutableList<CityInfo> {
 
@@ -41,6 +47,7 @@ class WeatherController {
                         val weatherInfo = gson.fromJson(responseBodyWeatherCity, WeatherModel::class.java)
 
                         val cityInfo = CityInfo(
+                            id = "${city.latitude}.${city.longitude}",
                             name = city.name ?: "",
                             latitude = city.latitude ?: 0.0,
                             longitude = city.longitude ?: 0.0,
@@ -58,6 +65,22 @@ class WeatherController {
                 }
             } else {
                 logger.log(Level.WARNING, "Erreur de réponse responseCity : ${responseCity.status.value}")
+            }
+
+            val existingSearch = searchResultDao.getSearchById(cityName)
+
+            if (results.isNotEmpty() && existingSearch == null) {
+                val searchResult = SearchResult(
+                    searchName = cityName,
+                    listCityInfo = results,
+                    entranceAt = LocalDateTime.now()
+                )
+                try {
+                    searchResultDao.insertSearch(searchResult)
+                    logger.log(Level.INFO, "Recherche enregistrée pour : $cityName")
+                } catch (e: Exception) {
+                    logger.log(Level.WARNING, "Erreur lors de l'enregistrement de la recherche", e)
+                }
             }
 
             return results
@@ -119,6 +142,7 @@ class WeatherController {
                 val weatherInfo = gson.fromJson(responseBodyWeather, WeatherModel::class.java)
 
                 val cityInfo = CityInfo(
+                    id = "${latitude}.${longitude}",
                     name = city ?: "",
                     latitude = latitude ?: 0.0,
                     longitude = longitude ?: 0.0,

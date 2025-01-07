@@ -16,6 +16,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,21 +37,44 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import com.example.weatherapi.Database.AppDatabase
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 @Composable
 fun WeatherDetailsScreen(
     navController: NavController,
-    cityInfoViewModel: CityInfoViewModel
+    cityInfoViewModel: CityInfoViewModel,
+    isPortrait: Boolean
 ) {
     var favoris by remember { mutableStateOf(false) }
-    val city = cityInfoViewModel.cityInfo
+    val cityInfo = cityInfoViewModel.cityInfo // Récupérer la ville actuelle
     val image: Painter = painterResource(id = com.example.weatherapi.R.drawable.weather_image)
     val currentDateTime = LocalDateTime.now()
     val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm")
     val formatterHourAndMinutes = DateTimeFormatter.ofPattern("HH:mm")
     val formattedDateTime = currentDateTime.format(formatter)
     val formattedDateTimeHourAndMinutes = currentDateTime.format(formatterHourAndMinutes)
+
+    val context = LocalContext.current
+    val db = remember { AppDatabase.getDatabase(context) }
+    val scope = rememberCoroutineScope()
+
+    // Vérifier si la ville est dans les favoris au chargement
+    LaunchedEffect(cityInfo) {
+        cityInfo?.let { city ->
+            scope.launch {
+                try {
+                    favoris = db.cityInfoDao().isCityFavorite(city.id).first()
+                } catch (e: Exception) {
+                    println("Erreur lors de la vérification des favoris : ${e.message}")
+                }
+            }
+        }
+    }
 
     val ventEmoji = "\uD83D\uDCA8"  // Vent
     val ensoleilleEmoji = "\u2600\uFE0F"  // Ensoleillé
@@ -59,7 +83,7 @@ fun WeatherDetailsScreen(
     val temperatureEmoji = "\uD83C\uDF21"  // Température
 
     var i = -1
-    city?.weatherInfo?.hourly?.time?.let { timeList ->
+    cityInfo?.weatherInfo?.hourly?.time?.let { timeList ->
         timeList.forEachIndexed { index, time ->
             val timeDate = LocalDateTime.parse(time, DateTimeFormatter.ISO_DATE_TIME)
             if (formattedDateTime > timeDate.format(formatter)) {
@@ -87,34 +111,49 @@ fun WeatherDetailsScreen(
             ) {
                 BackButton(navController)
                 
-                Icon(
-                    imageVector = if (favoris) Icons.Filled.Star else Icons.Outlined.Star,
-                    contentDescription = if (favoris) "Retirer des favoris" else "Ajouter aux favoris",
-                    tint = if (favoris) Color(0xFFFFD700) else Color.White,
-                    modifier = Modifier
-                        .size(30.dp)
-                        .clickable {
-                            favoris = !favoris
-                        }
-                )
+                cityInfo?.let { city ->
+                    Icon(
+                        imageVector = if (favoris) Icons.Filled.Star else Icons.Outlined.Star,
+                        contentDescription = if (favoris) "Retirer des favoris" else "Ajouter aux favoris",
+                        tint = if (favoris) Color(0xFFFFD700) else Color.White,
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clickable {
+                                favoris = !favoris
+                                scope.launch {
+                                    try {
+                                        if (favoris) {
+                                            db.cityInfoDao().insertCity(cityInfo = city)
+                                            println("Ville ajoutée aux favoris : ${city.name}")
+                                        } else {
+                                            db.cityInfoDao().deleteCity(cityInfo = city)
+                                            println("Ville retirée des favoris : ${city.name}")
+                                        }
+                                    } catch (e: Exception) {
+                                        println("Erreur lors de la gestion des favoris : ${e.message}")
+                                    }
+                                }
+                            }
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            CityName(city)
+            CityName(cityInfo)
 
-            CityAdmin(city)
+            CityAdmin(cityInfo)
 
             Spacer(modifier = Modifier.height(100.dp))
 
             CurrentTime(formattedDateTimeHourAndMinutes)
 
-            CityTemperature(city, i)
+            CityTemperature(cityInfo, i)
 
             Spacer(modifier = Modifier.height(90.dp))
 
             WeatherStatsBox(
-                city = city,
+                city = cityInfo,
                 ventEmoji = ventEmoji,
                 pluieEmoji = pluieEmoji,
                 ensoleilleEmoji = ensoleilleEmoji,
@@ -126,7 +165,7 @@ fun WeatherDetailsScreen(
             Spacer(modifier = Modifier.height(50.dp))
 
             WeatherPrevisionsList(
-                city = city,
+                city = cityInfo,
                 i = i,
                 ventEmoji = ventEmoji,
                 pluieEmoji = pluieEmoji,

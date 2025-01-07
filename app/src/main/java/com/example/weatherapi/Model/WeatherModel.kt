@@ -1,5 +1,9 @@
 package com.example.weatherapi.Model
 
+import androidx.room.TypeConverters
+import com.example.weatherapi.Utils.Converters
+
+@TypeConverters(Converters::class)
 data class WeatherModel(
     val latitude: Double,
     val longitude: Double,
@@ -12,6 +16,7 @@ data class WeatherModel(
     val hourly: HourlyDataClass
 )
 
+@TypeConverters(Converters::class)
 data class HourlyUnitDataClass(
     val time: String,
     val temperature_2m: String,
@@ -21,6 +26,7 @@ data class HourlyUnitDataClass(
     val wind_speed_10m: String
 )
 
+@TypeConverters(Converters::class)
 data class HourlyDataClass(
     val time: List<String>,
     val temperature_2m: List<Double>,
