@@ -39,13 +39,21 @@ import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.text.font.FontWeight
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun WeatherCityCard(
     city: CityInfo,
     navController: NavController,
-    cityInfoViewModel: CityInfoViewModel
+    cityInfoViewModel: CityInfoViewModel,
+    isPortrait: Boolean
 ) {
     val currentDateTime = LocalDateTime.now()
     val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm")
@@ -80,180 +88,196 @@ fun WeatherCityCard(
         }
     }
 
-    // Box pour contenir l'image en fond et le contenu au-dessus
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            .height(if (isPortrait) 200.dp else 160.dp)
+            .padding(
+                vertical = if (isPortrait) 8.dp else 4.dp,
+                horizontal = if (isPortrait) 4.dp else 4.dp
+            )
+            .clip(RoundedCornerShape(24.dp))
             .clickable {
                 cityInfoViewModel.setCityInfo(city)
                 navController.navigate("weather_details_screen")
             }
     ) {
-
-        // Image en fond
+        // Fond avec effet de superposition
         Image(
             painter = image,
             contentDescription = "Weather Background",
             modifier = Modifier
-                .matchParentSize() // L'image remplit toute la Box
-                .clip(RoundedCornerShape(16.dp)),
-            contentScale = ContentScale.Crop // L'image est coupée pour remplir l'espace sans déformation
+                .matchParentSize()
+                .clip(RoundedCornerShape(24.dp)),
+            contentScale = ContentScale.Crop
         )
 
+        // Overlay gradient amélioré
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Black.copy(alpha = 0.4f),
+                            Color.Black.copy(alpha = 0.7f)
+                        )
+                    )
+                )
+        )
 
-        // Superposition du contenu
+        // Contenu principal
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(15.dp, 20.dp, 15.dp, 20.dp)
+                .padding(
+                    horizontal = if (isPortrait) 20.dp else 12.dp,
+                    vertical = if (isPortrait) 16.dp else 10.dp
+                )
         ) {
-
+            // En-tête avec localisation et favoris
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(0.dp, 0.dp, 0.dp, 10.dp),
-                horizontalArrangement = Arrangement.End
+                    .padding(bottom = if (isPortrait) 12.dp else 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = if (favoris) Icons.Filled.Star else Icons.Outlined.Star,
-                    contentDescription = if (favoris) "Retirer des favoris" else "Ajouter aux favoris",
-                    tint = if (favoris) Color(0xFFFFD700) else Color.White,
+                // Section localisation
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.LocationOn,
+                        contentDescription = "Location",
+                        tint = Color.White,
+                        modifier = Modifier.size(if (isPortrait) 24.dp else 20.dp)
+                    )
+
+                    Column {
+                        Text(
+                            text = city.name ?: "Localisation inconnue",
+                            color = Color.White,
+                            style = if (isPortrait) {
+                                MaterialTheme.typography.titleLarge.copy(fontSize = 22.sp)
+                            } else {
+                                MaterialTheme.typography.titleMedium.copy(fontSize = 20.sp)
+                            },
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+
+                        // Afficher les détails de localisation uniquement en mode portrait
+                        if (isPortrait) {
+                            val detailText = buildString {
+                                if (!city.country.isNullOrBlank()) {
+                                    append(city.country)
+                                    if (!city.admin1.isNullOrBlank()) append(" (${city.admin1})")
+                                }
+                            }
+                            if (detailText.isNotEmpty()) {
+                                Text(
+                                    text = detailText,
+                                    color = Color.White.copy(alpha = 0.7f),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Bouton favoris optimisé
+                Box(
                     modifier = Modifier
-                        .size(30.dp)
+                        .size(if (isPortrait) 40.dp else 36.dp)
+                        .background(
+                            color = if (favoris)
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                            else
+                                Color.White.copy(alpha = 0.15f),
+                            shape = CircleShape
+                        )
                         .clickable {
                             favoris = !favoris
                             scope.launch {
                                 if (favoris) {
-                                    db.cityInfoDao().insertCity(cityInfo = city)
+                                    db.cityInfoDao().insertCity(city)
                                 } else {
-                                    db.cityInfoDao().deleteCity(cityInfo = city)
+                                    db.cityInfoDao().deleteCity(city)
                                 }
                             }
-                        }
-                )
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (favoris) Icons.Filled.Star else Icons.Outlined.Star,
+                        contentDescription = if (favoris) "Retirer des favoris" else "Ajouter aux favoris",
+                        tint = if (favoris) Color(0xFFFFD700) else Color.White,
+                        modifier = Modifier.size(if (isPortrait) 24.dp else 20.dp)
+                    )
+                }
             }
 
-            CityHeader(city = city)
+            // Informations météo
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = if (isPortrait) 16.dp else 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Température
+                if (i >= 0) {
+                    val temp = city.weatherInfo?.hourly?.temperature_2m?.get(i)
+                    if (temp != null) {
+                        Text(
+                            text = "${temp.toInt()}°",
+                            color = Color.White,
+                            style = if (isPortrait) {
+                                MaterialTheme.typography.displayMedium
+                            } else {
+                                MaterialTheme.typography.headlineLarge
+                            },
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
 
-            WeatherInfo(
-                city = city,
-                pluieEmoji = pluieEmoji,
-                ensoleilleEmoji = ensoleilleEmoji,
-                i = i
-            )
-
-            WindInfo(city = city, ventEmoji = ventEmoji, i = i)
-        }
-    }
-}
-
-
-@Composable
-fun CityHeader(city: CityInfo) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 4.dp)
-    ) {
-        Text(
-            text = buildString {
-                append(city.country)
-                if (!city.name.isNullOrEmpty()) append(", ${city.name}")
-                if (!city.admin1.isNullOrEmpty()) append(", ${city.admin1}")
-                if (!city.admin2.isNullOrEmpty()) append(", ${city.admin2}")
-                if (!city.admin3.isNullOrEmpty()) append(", ${city.admin3}")
-            },
-            color = Color.White,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis // Ajout des points de suspension
-        )
-    }
-}
-
-@Composable
-fun WeatherInfo(city: CityInfo, pluieEmoji: String, ensoleilleEmoji: String, i: Int) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            // Affichage du temps
-            if (city.weatherInfo?.hourly?.rain?.get(i) ?: 0.0 > 0) {
-                Text(text = "$pluieEmoji", style = TextStyle(fontSize = 40.sp))
-                Text(
-                    text = "Pluvieux",
-                    color = Color.White,
-                    style = TextStyle(
-                        fontSize = 25.sp,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                // Conditions météo
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(if (isPortrait) 8.dp else 4.dp)
+                ) {
+                    val isRainy = city.weatherInfo?.hourly?.rain?.get(i) ?: 0.0 > 0
+                    Text(
+                        text = if (isRainy) "$pluieEmoji Pluvieux" else "$ensoleilleEmoji Ensoleillé",
+                        style = if (isPortrait) {
+                            MaterialTheme.typography.titleLarge
+                        } else {
+                            MaterialTheme.typography.titleMedium
+                        },
+                        color = Color.White
                     )
-                )
-            } else {
-                Text(text = "$ensoleilleEmoji", style = TextStyle(fontSize = 40.sp))
-                Text(
-                    text = "Ensoleillé",
-                    color = Color.White,
-                    style = TextStyle(
-                        fontSize = 25.sp,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                    )
-                )
+
+                    val windSpeed = city.weatherInfo?.hourly?.wind_speed_10m?.get(i)
+                    if (windSpeed != null) {
+                        Text(
+                            text = "$ventEmoji ${windSpeed.toInt()} km/h",
+                            color = Color.White.copy(alpha = 0.8f),
+                            style = if (isPortrait) {
+                                MaterialTheme.typography.bodyLarge
+                            } else {
+                                MaterialTheme.typography.bodyMedium
+                            }
+                        )
+                    }
+                }
             }
         }
-
-
-        // Affichage de la temperature
-        if (i >= 0) {
-            // Récupérer la température et l'afficher avec un "°C"
-            Text(
-                text = "${city.weatherInfo?.hourly?.temperature_2m?.get(i)}°C", // Ajout de "°C"
-                color = Color.White, // Texte en blanc
-                style = TextStyle(
-                    fontSize = 40.sp,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                )
-            )
-        } else {
-            // Afficher Inconnu si on trouve pas de temperature
-            Text(
-                text = "Inconnu",
-                color = Color.White,
-                style = TextStyle(
-                    fontSize = 40.sp,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                )
-            )
-        }
     }
-}
-
-@Composable
-fun WindInfo(city: CityInfo, ventEmoji: String, i: Int) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Center // Correct pour centrer le contenu horizontalement
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp) // Espacement entre les éléments de la Column
-        ) {
-            Text(
-                text = "$ventEmoji",
-                style = TextStyle(fontSize = 30.sp)
-            )
-
-            Text(
-                text = "${city?.weatherInfo?.hourly?.wind_speed_10m?.get(i)} km/h",
-                color = Color.White,
-                style = TextStyle(fontSize = 20.sp)
-            )
-        }
-    }
-
 }

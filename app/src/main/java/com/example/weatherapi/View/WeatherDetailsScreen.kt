@@ -2,17 +2,16 @@ package com.example.weatherapi.View
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Star
-import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -26,9 +25,7 @@ import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
@@ -43,6 +40,13 @@ import androidx.compose.ui.platform.LocalContext
 import com.example.weatherapi.Database.AppDatabase
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.filled.ArrowBack
+import kotlinx.coroutines.delay
+import androidx.compose.runtime.DisposableEffect
 
 @Composable
 fun WeatherDetailsScreen(
@@ -53,7 +57,7 @@ fun WeatherDetailsScreen(
     var favoris by remember { mutableStateOf(false) }
     val cityInfo = cityInfoViewModel.cityInfo // Récupérer la ville actuelle
     val image: Painter = painterResource(id = com.example.weatherapi.R.drawable.weather_image)
-    val currentDateTime = LocalDateTime.now()
+    var currentDateTime by remember { mutableStateOf(LocalDateTime.now()) }
     val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm")
     val formatterHourAndMinutes = DateTimeFormatter.ofPattern("HH:mm")
     val formattedDateTime = currentDateTime.format(formatter)
@@ -76,13 +80,38 @@ fun WeatherDetailsScreen(
         }
     }
 
+    // Mettre à jour l'heure toutes les minutes
+    DisposableEffect(Unit) {
+        val job = scope.launch {
+            while(true) {
+                delay(60000) // Attendre 1 minute
+                currentDateTime = LocalDateTime.now()
+            }
+        }
+        onDispose {
+            job.cancel()
+        }
+    }
+
+    var i by remember { mutableStateOf(-1) }
+
+    // Mettre à jour l'index i en fonction de l'heure actuelle
+    LaunchedEffect(currentDateTime) {
+        cityInfo?.weatherInfo?.hourly?.time?.let { timeList ->
+            i = timeList.indexOfFirst { time ->
+                val timeDate = LocalDateTime.parse(time, DateTimeFormatter.ISO_DATE_TIME)
+                timeDate.isAfter(currentDateTime) || timeDate.isEqual(currentDateTime)
+            }.coerceAtLeast(0)
+        }
+    }
+
     val ventEmoji = "\uD83D\uDCA8"  // Vent
     val ensoleilleEmoji = "\u2600\uFE0F"  // Ensoleillé
     val pluieEmoji = "\uD83C\uDF27\uFE0F"  // Pluie
     val humiditeEmoji = "\uD83D\uDCA7"  // Humidité
     val temperatureEmoji = "\uD83C\uDF21"  // Température
 
-    var i = -1
+
     cityInfo?.weatherInfo?.hourly?.time?.let { timeList ->
         timeList.forEachIndexed { index, time ->
             val timeDate = LocalDateTime.parse(time, DateTimeFormatter.ISO_DATE_TIME)
@@ -94,14 +123,14 @@ fun WeatherDetailsScreen(
 
     Box(
         modifier = Modifier
-            .fillMaxSize() // Remplir toute la taille de l'écran (Largeur + Hauteur)
+            .fillMaxSize()
     ) {
         WeatherBackground(image)
 
         Column(
             modifier = Modifier
-                .fillMaxSize() // Remplir toute la taille de l'écran
-                .padding(16.dp) // Padding autour du contenu
+                .fillMaxSize()
+                .padding(if (isPortrait) 16.dp else 24.dp)
         ) {
             Row(
                 modifier = Modifier
@@ -110,7 +139,7 @@ fun WeatherDetailsScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 BackButton(navController)
-                
+
                 cityInfo?.let { city ->
                     Icon(
                         imageVector = if (favoris) Icons.Filled.Star else Icons.Outlined.Star,
@@ -138,19 +167,19 @@ fun WeatherDetailsScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(if (isPortrait) 16.dp else 8.dp))
 
-            CityName(cityInfo)
+            CityName(cityInfo, isPortrait)
 
             CityAdmin(cityInfo)
 
-            Spacer(modifier = Modifier.height(100.dp))
+            Spacer(modifier = Modifier.height(if (isPortrait) 70.dp else 30.dp))
 
             CurrentTime(formattedDateTimeHourAndMinutes)
 
-            CityTemperature(cityInfo, i)
+            CityTemperature(cityInfo, i, isPortrait)
 
-            Spacer(modifier = Modifier.height(90.dp))
+            Spacer(modifier = Modifier.height(if (isPortrait) 60.dp else 30.dp))
 
             WeatherStatsBox(
                 city = cityInfo,
@@ -159,17 +188,19 @@ fun WeatherDetailsScreen(
                 ensoleilleEmoji = ensoleilleEmoji,
                 temperatureEmoji = temperatureEmoji,
                 humiditeEmoji = humiditeEmoji,
-                i = i
+                i = i,
+                isPortrait = isPortrait
             )
 
-            Spacer(modifier = Modifier.height(50.dp))
+            Spacer(modifier = Modifier.height(if (isPortrait) 50.dp else 24.dp))
 
             WeatherPrevisionsList(
                 city = cityInfo,
                 i = i,
                 ventEmoji = ventEmoji,
                 pluieEmoji = pluieEmoji,
-                ensoleilleEmoji = ensoleilleEmoji
+                ensoleilleEmoji = ensoleilleEmoji,
+                isPortrait = isPortrait
             )
         }
     }
@@ -188,100 +219,123 @@ fun WeatherBackground(image: Painter) {
 
 @Composable
 fun BackButton(navController: NavController) {
-    Button(onClick = { navController.navigate("weather_screen") }) {
-        Text(text = "Revenir en arrière")
+    IconButton(
+        onClick = { navController.navigateUp() },
+        modifier = Modifier
+            .size(48.dp)
+            .background(Color(0x33FFFFFF))
+    ) {
+        Icon(
+            imageVector = Icons.Default.ArrowBack,
+            contentDescription = "Retour",
+            tint = Color.White,
+            modifier = Modifier.size(24.dp)
+        )
     }
 }
 
 @Composable
-fun CityName(city: CityInfo?) {
-    Row(
+fun CityName(city: CityInfo?, isPortrait: Boolean) {
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Center
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        if (city?.name.isNullOrEmpty()) {
-            Text(
-                "${city?.country}",
-                color = Color.White,
-                style = TextStyle(fontSize = 35.sp, fontWeight = FontWeight.Bold)
+        Text(
+            text = if (city?.name.isNullOrEmpty()) "${city?.country}" else "${city?.name}",
+            color = Color.White,
+            style = MaterialTheme.typography.headlineLarge.copy(
+                fontSize = if (isPortrait) 38.sp else 32.sp,
+                fontWeight = FontWeight.Bold,
+                shadow = Shadow(
+                    color = Color.Black.copy(alpha = 0.3f),
+                    offset = Offset(2f, 2f),
+                    blurRadius = 4f
+                )
             )
-        } else {
-            Text(
-                "${city?.name}",
-                color = Color.White,
-                style = TextStyle(fontSize = 35.sp, fontWeight = FontWeight.Bold)
-            )
-        }
+        )
     }
 }
 
 @Composable
 fun CityAdmin(city: CityInfo?) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.Center
     ) {
-        // Affichage conditionnel pour admin1, admin2 et admin3
         city?.let {
-            if (!it.admin1.isNullOrEmpty()) {
-                Text(
-                    "${it.admin1}",
-                    color = Color.White,
-                    style = TextStyle(fontSize = 24.sp)
+            val adminParts = listOfNotNull(it.admin1, it.admin2, it.admin3)
+            Text(
+                text = adminParts.joinToString(", "),
+                color = Color.White.copy(alpha = 0.9f),
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontSize = 20.sp,
+                    shadow = Shadow(
+                        color = Color.Black.copy(alpha = 0.2f),
+                        offset = Offset(1f, 1f),
+                        blurRadius = 2f
+                    )
                 )
-            }
-            if (!it.admin2.isNullOrEmpty()) {
-                Text(
-                    ", ${it.admin2}",
-                    color = Color.White,
-                    style = TextStyle(fontSize = 24.sp)
-                )
-            }
-            if (!it.admin3.isNullOrEmpty()) {
-                Text(
-                    ", ${it.admin3}",
-                    color = Color.White,
-                    style = TextStyle(fontSize = 24.sp)
-                )
-            }
+            )
         }
     }
 }
 
 @Composable
 fun CurrentTime(formattedDateTimeHourAndMinutes: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Center
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
     ) {
         Text(
-            formattedDateTimeHourAndMinutes,
+            text = formattedDateTimeHourAndMinutes,
+            modifier = Modifier
+                .align(Alignment.Center)
+                .clip(RoundedCornerShape(20.dp))
+                .background(Color(0x33FFFFFF))
+                .padding(horizontal = 16.dp, vertical = 8.dp),
             color = Color.White,
-            style = TextStyle(
-                fontSize = 30.sp,
-                fontWeight = FontWeight.Bold,
-                textDecoration = TextDecoration.Underline
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Medium,
+                letterSpacing = 1.sp
             )
         )
     }
 }
 
 @Composable
-fun CityTemperature(city: CityInfo?, i: Int) {
+fun CityTemperature(city: CityInfo?, i: Int, isPortrait: Boolean) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Center
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = if (isPortrait) 16.dp else 8.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.Bottom
     ) {
         Text(
             text = "${city?.weatherInfo?.hourly?.temperature_2m?.get(i)}",
             color = Color.White,
-            style = TextStyle(fontSize = 120.sp, fontWeight = FontWeight.ExtraBold)
+            style = MaterialTheme.typography.displayLarge.copy(
+                fontSize = if (isPortrait) 120.sp else 80.sp,
+                fontWeight = FontWeight.ExtraBold,
+                shadow = Shadow(
+                    color = Color.Black.copy(alpha = 0.2f),
+                    offset = Offset(2f, 2f),
+                    blurRadius = 4f
+                )
+            )
         )
-
         Text(
             text = "°C",
             color = Color.White,
-            style = TextStyle(fontSize = 35.sp, fontWeight = FontWeight.Bold)
+            style = MaterialTheme.typography.headlineMedium.copy(
+                fontSize = if (isPortrait) 32.sp else 24.sp,
+                fontWeight = FontWeight.Bold
+            ),
+            modifier = Modifier.padding(bottom = if (isPortrait) 24.dp else 16.dp)
         )
     }
 }
@@ -294,25 +348,29 @@ fun WeatherStatsBox(
     ensoleilleEmoji: String,
     temperatureEmoji: String,
     humiditeEmoji: String,
-    i: Int
+    i: Int,
+    isPortrait: Boolean
 ) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp)) // Coins arrondis
-            .background(Color(0x70000000)) // Couleur de fond plus foncée
+            .padding(horizontal = if (isPortrait) 16.dp else 24.dp)
+            .clip(RoundedCornerShape(28.dp))
+            .background(Color(0x33000000))
+            .border(
+                width = 1.dp,
+                color = Color.White.copy(alpha = 0.2f),
+                shape = RoundedCornerShape(28.dp)
+            )
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(15.dp, 0.dp),
-            verticalArrangement = Arrangement.Center
+                .padding(if (isPortrait) 24.dp else 16.dp),
+            verticalArrangement = Arrangement.spacedBy(if (isPortrait) 24.dp else 16.dp)
         ) {
-            WeatherRow(city, ventEmoji, pluieEmoji, ensoleilleEmoji, i)
-
-            Spacer(modifier = Modifier.height(30.dp))
-
-            WeatherRow2(city, temperatureEmoji, humiditeEmoji, i)
+            WeatherRow(city, ventEmoji, pluieEmoji, ensoleilleEmoji, i, isPortrait)
+            WeatherRow2(city, temperatureEmoji, humiditeEmoji, i, isPortrait)
         }
     }
 }
@@ -323,7 +381,8 @@ fun WeatherRow(
     ventEmoji: String,
     pluieEmoji: String,
     ensoleilleEmoji: String,
-    i: Int
+    i: Int,
+    isPortrait: Boolean
 ) {
     Row(
         modifier = Modifier
@@ -369,7 +428,7 @@ fun WeatherRow(
 }
 
 @Composable
-fun WeatherRow2(city: CityInfo?, temperatureEmoji: String, humiditeEmoji: String, i: Int) {
+fun WeatherRow2(city: CityInfo?, temperatureEmoji: String, humiditeEmoji: String, i: Int, isPortrait: Boolean) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -414,14 +473,16 @@ fun WeatherPrevisionsList(
     i: Int,
     ventEmoji: String,
     pluieEmoji: String,
-    ensoleilleEmoji: String
+    ensoleilleEmoji: String,
+    isPortrait: Boolean
 ) {
     val indexTimeList = mutableListOf<Int>()
+    val currentHour = LocalDateTime.now().hour
 
-    // Récupérer les prévisions horaires
     city?.weatherInfo?.hourly?.time?.let { timeList ->
         timeList.forEachIndexed { index, time ->
-            if (index > i && index < i + 24) {  // Ajouter seulement les prochaines 24 heures
+            // Afficher les prévisions pour les 24 prochaines heures à partir de l'heure actuelle
+            if (index > i && index < i + 24) {
                 indexTimeList.add(index)
             }
         }
@@ -431,7 +492,8 @@ fun WeatherPrevisionsList(
     LazyRow(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp)
+            .padding(horizontal = if (isPortrait) 8.dp else 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (isPortrait) 8.dp else 12.dp)
     ) {
         // Utilisation de itemsIndexed pour accéder à l'index et à l'élément
         itemsIndexed(indexTimeList) { indexInList, index ->
@@ -452,11 +514,10 @@ fun WeatherPrevisionsList(
 
             // Carte de prévision pour chaque heure
             WeatherPrevisionCard(
-                hourAndMinutes = time?.substring(11, 16) ?: "--:--", // Format HH:mm
+                hourAndMinutes = time?.substring(11, 16) ?: "--:--",
                 temperature = temperature,
                 emoji = emoji,
-                windSpeed = windSpeed,
-                windEmoji = ventEmoji
+                isPortrait = isPortrait
             )
         }
     }
@@ -467,71 +528,67 @@ fun WeatherPrevisionCard(
     hourAndMinutes: String,
     temperature: String,
     emoji: String,
-    windSpeed: Double,
-    windEmoji: String,
+    isPortrait: Boolean
 ) {
     Box(
         modifier = Modifier
-            .padding(8.dp)
-            .clip(RoundedCornerShape(16.dp)) // Coins arrondis
-            .background(Color(0x562B3B36)) // Fond semi-transparent
-            .padding(12.dp) // Réduction de padding pour rendre la box plus petite
+            .padding(horizontal = if (isPortrait) 4.dp else 6.dp)
+            .width(if (isPortrait) 85.dp else 100.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(0x40FFFFFF))
+            .border(
+                width = 1.dp,
+                color = Color.White.copy(alpha = 0.2f),
+                shape = RoundedCornerShape(16.dp)
+            )
+            .padding(if (isPortrait) 8.dp else 12.dp),
+        contentAlignment = Alignment.Center
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center // Centrer verticalement le contenu
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.fillMaxWidth()
         ) {
+            // Heure
             Text(
                 text = hourAndMinutes,
                 color = Color.White,
-                style = TextStyle(
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold
-                ) // Taille réduite pour l'heure
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = if (isPortrait) 14.sp else 16.sp
+                )
             )
 
-            // Affichage de l'emoji de la météo
-            Text(
-                text = emoji,
-                fontSize = 24.sp // Réduire la taille de l'emoji
-            )
+            Spacer(modifier = Modifier.height(if (isPortrait) 2.dp else 4.dp))
 
-            Spacer(modifier = Modifier.height(4.dp)) // Réduire l'espace entre les éléments
-
+            // Température
             Text(
-                text = "$temperature°C",
+                text = "$temperature°",
                 color = Color.White,
-                style = TextStyle(
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
-                ) // Taille réduite pour la température
+                style = MaterialTheme.typography.titleLarge.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = if (isPortrait) 24.sp else 28.sp
+                )
             )
 
-            Spacer(modifier = Modifier.height(4.dp)) // Réduire l'espace entre les éléments
-
-            // Remplacer l'emoji par du texte "Wind:" et ajuster la taille
-            Row (
-                verticalAlignment = Alignment.CenterVertically
+            // Emoji météo avec condition
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = windEmoji,
-                    style = TextStyle(fontSize = 10.sp) // Taille réduite pour la vitesse du vent
+                    text = emoji,
+                    fontSize = if (isPortrait) 24.sp else 28.sp
                 )
-
-                Spacer(modifier = Modifier.width(2.dp))
-
                 Text(
-                    text = "Wind: $windSpeed km/h",
-                    color = Color.White,
-                    style = TextStyle(fontSize = 12.sp) // Taille réduite pour la vitesse du vent
+                    text = if (emoji == "🌧️") "Pluie" else "Soleil",
+                    color = Color.White.copy(alpha = 0.9f),
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontSize = if (isPortrait) 12.sp else 14.sp
+                    )
                 )
             }
-
-
-            Spacer(modifier = Modifier.height(4.dp)) // Espacement réduit entre les éléments
-
-
         }
     }
 }
-
