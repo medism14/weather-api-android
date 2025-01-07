@@ -27,6 +27,8 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import com.example.weatherapi.Controller.WeatherController
+import com.example.weatherapi.Dao.CityInfoDao
+import com.example.weatherapi.DatabaseInstance
 import com.example.weatherapi.Model.CityInfo
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.tasks.Task
