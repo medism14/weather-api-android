@@ -47,6 +47,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material.icons.filled.ArrowBack
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+
 
 @Composable
 fun WeatherDetailsScreen(
@@ -121,20 +124,20 @@ fun WeatherDetailsScreen(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-    ) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Fond
         WeatherBackground(image)
 
+        // Contenu principal avec scroll
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(if (isPortrait) 16.dp else 24.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(if (isPortrait) 16.dp else 16.dp)
         ) {
+            // Barre supérieure
             Row(
-                modifier = Modifier
-                    .fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -153,10 +156,8 @@ fun WeatherDetailsScreen(
                                     try {
                                         if (favoris) {
                                             db.cityInfoDao().insertCity(cityInfo = city)
-                                            println("Ville ajoutée aux favoris : ${city.name}")
                                         } else {
                                             db.cityInfoDao().deleteCity(cityInfo = city)
-                                            println("Ville retirée des favoris : ${city.name}")
                                         }
                                     } catch (e: Exception) {
                                         println("Erreur lors de la gestion des favoris : ${e.message}")
@@ -170,17 +171,11 @@ fun WeatherDetailsScreen(
             Spacer(modifier = Modifier.height(if (isPortrait) 16.dp else 8.dp))
 
             CityName(cityInfo, isPortrait)
-
             CityAdmin(cityInfo)
-
-            Spacer(modifier = Modifier.height(if (isPortrait) 70.dp else 30.dp))
-
+            Spacer(modifier = Modifier.height(if (isPortrait) 40.dp else 15.dp))
             CurrentTime(formattedDateTimeHourAndMinutes)
-
             CityTemperature(cityInfo, i, isPortrait)
-
-            Spacer(modifier = Modifier.height(if (isPortrait) 60.dp else 30.dp))
-
+            Spacer(modifier = Modifier.height(if (isPortrait) 30.dp else 15.dp))
             WeatherStatsBox(
                 city = cityInfo,
                 ventEmoji = ventEmoji,
@@ -191,17 +186,22 @@ fun WeatherDetailsScreen(
                 i = i,
                 isPortrait = isPortrait
             )
+            Spacer(modifier = Modifier.height(if (isPortrait) 40.dp else 30.dp))
 
-            Spacer(modifier = Modifier.height(if (isPortrait) 50.dp else 24.dp))
+            // Pour les prévisions, on garde un LazyRow car c'est un défilement horizontal
+            Box(modifier = Modifier.fillMaxWidth()) {
+                WeatherPrevisionsList(
+                    city = cityInfo,
+                    i = i,
+                    ventEmoji = ventEmoji,
+                    pluieEmoji = pluieEmoji,
+                    ensoleilleEmoji = ensoleilleEmoji,
+                    isPortrait = isPortrait
+                )
+            }
 
-            WeatherPrevisionsList(
-                city = cityInfo,
-                i = i,
-                ventEmoji = ventEmoji,
-                pluieEmoji = pluieEmoji,
-                ensoleilleEmoji = ensoleilleEmoji,
-                isPortrait = isPortrait
-            )
+            // Ajouter un espace en bas pour éviter que le contenu soit coupé
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
@@ -265,19 +265,29 @@ fun CityAdmin(city: CityInfo?) {
         horizontalArrangement = Arrangement.Center
     ) {
         city?.let {
-            val adminParts = listOfNotNull(it.admin1, it.admin2, it.admin3)
-            Text(
-                text = adminParts.joinToString(", "),
-                color = Color.White.copy(alpha = 0.9f),
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontSize = 20.sp,
-                    shadow = Shadow(
-                        color = Color.Black.copy(alpha = 0.2f),
-                        offset = Offset(1f, 1f),
-                        blurRadius = 2f
+            // Filtrer les parties non nulles et non vides
+            val adminParts = listOfNotNull(
+                it.name?.takeIf { name -> name.isNotBlank() },
+                it.admin1?.takeIf { admin -> admin.isNotBlank() },
+                it.admin2?.takeIf { admin -> admin.isNotBlank() },
+                it.admin3?.takeIf { admin -> admin.isNotBlank() }
+            ).distinct() // Éviter les doublons potentiels
+
+            // N'afficher que s'il y a des informations à montrer
+            if (adminParts.isNotEmpty()) {
+                Text(
+                    text = adminParts.joinToString(" • "), // Utiliser un point comme séparateur au lieu d'une virgule
+                    color = Color.White.copy(alpha = 0.9f),
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontSize = 20.sp,
+                        shadow = Shadow(
+                            color = Color.Black.copy(alpha = 0.2f),
+                            offset = Offset(1f, 1f),
+                            blurRadius = 2f
+                        )
                     )
                 )
-            )
+            }
         }
     }
 }
@@ -287,7 +297,7 @@ fun CurrentTime(formattedDateTimeHourAndMinutes: String) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp)
+            .padding(vertical = 4.dp)
     ) {
         Text(
             text = formattedDateTimeHourAndMinutes,
@@ -311,7 +321,7 @@ fun CityTemperature(city: CityInfo?, i: Int, isPortrait: Boolean) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = if (isPortrait) 16.dp else 8.dp),
+            .padding(vertical = if (isPortrait) 8.dp else 4.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.Bottom
     ) {
@@ -366,8 +376,8 @@ fun WeatherStatsBox(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(if (isPortrait) 24.dp else 16.dp),
-            verticalArrangement = Arrangement.spacedBy(if (isPortrait) 24.dp else 16.dp)
+                .padding(if (isPortrait) 16.dp else 12.dp),
+            verticalArrangement = Arrangement.spacedBy(if (isPortrait) 16.dp else 12.dp)
         ) {
             WeatherRow(city, ventEmoji, pluieEmoji, ensoleilleEmoji, i, isPortrait)
             WeatherRow2(city, temperatureEmoji, humiditeEmoji, i, isPortrait)

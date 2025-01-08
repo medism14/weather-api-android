@@ -28,9 +28,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
@@ -42,16 +39,18 @@ import androidx.navigation.NavController
 import com.example.weatherapi.Controller.WeatherController
 import com.example.weatherapi.Model.CityInfo
 import com.google.android.gms.location.LocationServices
-import com.google.android.gms.tasks.Task
 import com.example.weatherapi.Database.AppDatabase
 import com.example.weatherapi.Model.SearchResult
 import com.example.weatherapi.Utils.NetworkUtils
 import java.time.format.DateTimeFormatter
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import android.location.LocationListener
 import android.os.Bundle
 import kotlin.math.abs
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 
 @Composable
 fun WeatherScreen(
@@ -65,9 +64,8 @@ fun WeatherScreen(
     val controller = remember { WeatherController(searchResultDao) }
     var filteredCities by remember { mutableStateOf(mutableListOf<CityInfo>()) }
     var actualCity by remember { mutableStateOf(CityInfo()) }
-    var isLoading by remember { mutableStateOf(false) }
-    var isLoadingFavorites by remember { mutableStateOf(false) }
-    var isLoadingSearch by remember { mutableStateOf(true) }
+    var isLoading by remember { mutableStateOf(true) }
+    var isLoadingFavorites by remember { mutableStateOf(true) }
     var searchQuery by remember { mutableStateOf("") }
     var enterPressed by remember { mutableStateOf(false) }
     var onSearch by remember { mutableStateOf(false) }
@@ -125,15 +123,14 @@ fun WeatherScreen(
         }
     }
 
-
-    // Créer un LocationListener
-    val locationListener = remember {
+    // Ajouter un nouveau LocationListener pour surveiller les changements d'état de la localisation
+    val locationStateListener = remember {
         object : LocationListener {
             override fun onLocationChanged(location: Location) {
-                // Ne mettre à jour que si la différence est significative
+                // Gérer le changement de localisation comme avant
                 val significantChange = abs(currentLatitude - location.latitude) > 0.0001 ||
                                       abs(currentLongitude - location.longitude) > 0.0001
-                
+
                 if (significantChange) {
                     currentLatitude = location.latitude
                     currentLongitude = location.longitude
@@ -153,27 +150,28 @@ fun WeatherScreen(
                 }
             }
 
-            override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {
-                // Requis mais non utilisé
-            }
+            override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
         }
     }
 
-    // Effet pour gérer l'enregistrement/désenregistrement du listener
+    // Modifier le DisposableEffect pour ajouter un listener sur le statut du GPS
     DisposableEffect(locationManager) {
         try {
+            // Vérifier l'état initial
             isLocationEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
-            
+
+            // Enregistrer le listener pour les mises à jour de position
             if (ContextCompat.checkSelfPermission(
                     navController.context,
                     Manifest.permission.ACCESS_FINE_LOCATION
                 ) == PackageManager.PERMISSION_GRANTED
             ) {
+                // Enregistrer le listener pour les changements d'état du GPS
                 locationManager.requestLocationUpdates(
                     LocationManager.GPS_PROVIDER,
-                    5000L,  // Augmentation de l'intervalle à 5 secondes
-                    10f,    // Distance minimum de 10 mètres
-                    locationListener
+                    0L,
+                    0f,
+                    locationStateListener
                 )
             }
         } catch (e: SecurityException) {
@@ -181,22 +179,20 @@ fun WeatherScreen(
         }
 
         onDispose {
-            locationManager.removeUpdates(locationListener)
+            locationManager.removeUpdates(locationStateListener)
         }
     }
 
-    // Effet pour mettre à jour la ville actuelle quand la localisation change
+    // Modifier le LaunchedEffect pour la mise à jour de la ville
     LaunchedEffect(isLocationEnabled, currentLatitude, currentLongitude, internetConnection) {
-        if (isLocationEnabled && 
-            internetConnection && 
-            currentLatitude != 0.0 && 
-            currentLongitude != 0.0 &&
-            !isLoading  // Éviter les requêtes multiples pendant le chargement
+        if (isLocationEnabled &&
+            internetConnection &&
+            currentLatitude != 0.0 &&
+            currentLongitude != 0.0
         ) {
             isLoading = true
             try {
                 val newCity = controller.fetchByPosition(currentLatitude, currentLongitude)
-                // Ne mettre à jour que si les données sont différentes
                 if (newCity != actualCity) {
                     actualCity = newCity
                 }
@@ -205,9 +201,18 @@ fun WeatherScreen(
             } finally {
                 isLoading = false
             }
+        } else {
+            isLoading = false
         }
     }
 
+    // Fonction de rafraîchissement
+    val refreshLocation = {
+        isLocationEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
+        if (isLocationEnabled) {
+            getUserLocation()
+        }
+    }
 
     // Surveiller les changements de connexion internet
     DisposableEffect(connectivityManager) {
@@ -240,11 +245,9 @@ fun WeatherScreen(
         try {
             db.searchResultDao().getAllSearchs().collect { results ->
                 searchsList = results
-                isLoadingSearch = false
             }
         } catch (e: Exception) {
             println("Erreur lors du chargement de l'historique : ${e.message}")
-            isLoadingSearch = false
         }
     }
 
@@ -255,7 +258,7 @@ fun WeatherScreen(
     }
 
     LaunchedEffect(Unit) {
-        isLoadingFavorites = true
+        isLoadingFavorites = true  // Mettre isLoadingFavorites à true avant la requête
         try {
             db.cityInfoDao().getAllCities().collect { cities ->
                 favoritesList = cities
@@ -269,29 +272,30 @@ fun WeatherScreen(
 
     LaunchedEffect(enterPressed) {
         if (enterPressed) {
-            if (searchQuery.isEmpty()) {
+            val cleanedQuery = searchQuery.trim()
+            
+            if (cleanedQuery.isEmpty()) {
                 onSearch = false
+                isLoading = false
             } else {
                 isLoading = true
-                var resultExist = searchResultDao.getSearchById(searchQuery)
+                try {
+                    var resultExist = searchResultDao.getSearchById(cleanedQuery)
 
-                if (resultExist != null) {
-                    onSearch = true
-                    filteredCities = resultExist.listCityInfo.toMutableList()
-                    println("Voici les city filtrés:")
-                    println(filteredCities)
-                    isLoading = false
-                } else if (!internetConnection) {
-                    showNoConnectionDialog = true
-                    onSearch = false
-                    isLoading = false
-                } else {
-                    try {
+                    if (resultExist != null) {
                         onSearch = true
-                        filteredCities = controller.fetchCities(searchQuery)
-                    } catch (e: Exception) {
-                        filteredCities = mutableListOf()
+                        filteredCities = resultExist.listCityInfo.toMutableList()
+                    } else if (!internetConnection) {
+                        showNoConnectionDialog = true
+                        onSearch = false
+                    } else {
+                        onSearch = true
+                        filteredCities = controller.fetchCities(cleanedQuery)
                     }
+                } catch (e: Exception) {
+                    filteredCities = mutableListOf()
+                    println("Erreur lors de la recherche : ${e.message}")
+                } finally {
                     isLoading = false
                 }
             }
@@ -343,17 +347,17 @@ fun WeatherScreen(
                             },
                             modifier = Modifier
                                 .weight(1f)
-                                .height(55.dp)
-                                .onKeyEvent { event ->
-                                    if (event.key == Key.Enter) {
-                                        enterPressed = true
-                                        keyboardController?.hide()
-                                        true
-                                    } else {
-                                        false
-                                    }
-                                },
+                                .height(55.dp),
                             singleLine = true,
+                            keyboardOptions = KeyboardOptions(
+                                imeAction = ImeAction.Search
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onSearch = {
+                                    enterPressed = true
+                                    keyboardController?.hide()
+                                }
+                            ),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = Color.Transparent,
                                 unfocusedBorderColor = Color.Transparent,
@@ -392,12 +396,12 @@ fun WeatherScreen(
                                 .heightIn(max = 200.dp)
                         ) {
                             items(searchsList.filter {
-                                it.searchName.contains(searchQuery, ignoreCase = true)
+                                it.searchName.contains(searchQuery.trim(), ignoreCase = true)
                             }) { searchResult ->
                                 HistoryItem(
                                     searchResult = searchResult,
                                     onItemClick = {
-                                        searchQuery = searchResult.searchName
+                                        searchQuery = searchResult.searchName.trim()
                                         enterPressed = true
                                     }
                                 )
@@ -407,56 +411,173 @@ fun WeatherScreen(
                 }
             }
 
-            if (!internetConnection && !onSearch) {
-                NoInternetCard()
-
-                actualCityDisplay(
-                    city = CityInfo(),
-                    navController = navController,
-                    cityInfoViewModel = cityInfoViewModel,
-                    isLoading = isLoading,
-                    isLoadingFavorites = isLoadingFavorites,
-                    favoritesCities = favoritesList,
-                    isPortrait = isPortrait,
-                    showLocationSection = false
-                )
+            if (isLoading || isLoadingFavorites) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(48.dp)
+                    )
+                }
             } else {
-                when {
-                    onSearch -> {
-                        searchResults(
-                            filteredCities = filteredCities,
-                            isLoading = isLoading,
-                            navController = navController,
-                            cityInfoViewModel = cityInfoViewModel,
-                            isPortrait = isPortrait
-                        )
-                    }
-                    else -> {
-                        Column(
-                            modifier = if (!isPortrait) {
-                                Modifier.fillMaxWidth()
-                            } else {
-                                Modifier.fillMaxSize()
-                            }
-                        ) {
-                            if (!isLocationEnabled) {
-                                LocationDisabledCard(navController)
-                            }
+                if (!internetConnection && !onSearch) {
+                    NoInternetCard()
 
-                            actualCityDisplay(
-                                city = if (isLocationEnabled) actualCity else CityInfo(),
+                    actualCityDisplay(
+                        city = CityInfo(),
+                        navController = navController,
+                        cityInfoViewModel = cityInfoViewModel,
+                        isLoading = isLoading,
+                        isLoadingFavorites = isLoadingFavorites,
+                        favoritesCities = favoritesList,
+                        isPortrait = isPortrait,
+                        showLocationSection = false,
+                        refreshLocation = refreshLocation
+                    )
+                } else {
+                    when {
+                        onSearch -> {
+                            searchResults(
+                                filteredCities = filteredCities,
+                                isLoading = isLoading,
                                 navController = navController,
                                 cityInfoViewModel = cityInfoViewModel,
-                                isLoading = isLoading,
-                                isLoadingFavorites = isLoadingFavorites,
-                                favoritesCities = favoritesList,
-                                isPortrait = isPortrait,
-                                showLocationSection = isLocationEnabled
+                                isPortrait = isPortrait
                             )
+                        }
+                        else -> {
+                            if (isPortrait) {
+                                // Mode portrait - affichage en colonne
+                                LazyColumn(
+                                    modifier = Modifier.fillMaxSize(),
+                                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                                ) {
+                                    if (!isLocationEnabled) {
+                                        item {
+                                            LocationDisabledCard(
+                                                navController = navController,
+                                                onRefresh = refreshLocation
+                                            )
+                                        }
+                                    }
+
+                                    // Section position actuelle
+                                    if (isLocationEnabled) {
+                                        item {
+                                            CurrentLocationSection(
+                                                city = actualCity,
+                                                navController = navController,
+                                                cityInfoViewModel = cityInfoViewModel,
+                                                isPortrait = isPortrait,
+                                                onRefresh = refreshLocation
+                                            )
+                                        }
+                                    }
+
+                                    // Section favoris
+                                    item {
+                                        Text(
+                                            text = "⭐ Vos Favoris (${favoritesList.size})",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(top = 24.dp, bottom = 8.dp)
+                                        )
+                                    }
+
+                                    if (favoritesList.isEmpty()) {
+                                        item {
+                                            Text(
+                                                text = "Aucun favori pour le moment",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.padding(vertical = 8.dp)
+                                            )
+                                        }
+                                    } else {
+                                        items(favoritesList) { favoriteCity ->
+                                            WeatherCityCard(
+                                                city = favoriteCity,
+                                                navController = navController,
+                                                cityInfoViewModel = cityInfoViewModel,
+                                                isPortrait = isPortrait
+                                            )
+                                        }
+                                    }
+                                }
+                            } else {
+                                // Mode paysage - affichage en deux colonnes
+                                Row(
+                                    modifier = Modifier.fillMaxSize(),
+                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                ) {
+                                    // Colonne de gauche - Location ou LocationDisabled
+                                    Column(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxHeight()
+                                            .verticalScroll(rememberScrollState())
+                                    ) {
+                                        if (!isLocationEnabled) {
+                                            LocationDisabledCard(
+                                                navController = navController,
+                                                onRefresh = refreshLocation
+                                            )
+                                        } else {
+                                            CurrentLocationSection(
+                                                city = actualCity,
+                                                navController = navController,
+                                                cityInfoViewModel = cityInfoViewModel,
+                                                isPortrait = isPortrait,
+                                                onRefresh = refreshLocation
+                                            )
+                                        }
+                                    }
+
+                                    // Colonne de droite - Favoris
+                                    Column(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxHeight()
+                                    ) {
+                                        Text(
+                                            text = "⭐ Vos Favoris (${favoritesList.size})",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(bottom = 8.dp)
+                                        )
+
+                                        if (favoritesList.isEmpty()) {
+                                            Text(
+                                                text = "Aucun favori pour le moment",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.padding(vertical = 8.dp)
+                                            )
+                                        } else {
+                                            LazyColumn(
+                                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                items(favoritesList) { favoriteCity ->
+                                                    WeatherCityCard(
+                                                        city = favoriteCity,
+                                                        navController = navController,
+                                                        cityInfoViewModel = cityInfoViewModel,
+                                                        isPortrait = isPortrait
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
+
+
         }
 
         if (showNoConnectionDialog) {
@@ -565,7 +686,8 @@ fun actualCityDisplay(
     isLoadingFavorites: Boolean,
     favoritesCities: List<CityInfo>,
     isPortrait: Boolean,
-    showLocationSection: Boolean
+    showLocationSection: Boolean,
+    refreshLocation: () -> Unit
 ) {
     if (isLoading || isLoadingFavorites) {
         Box(
@@ -585,7 +707,13 @@ fun actualCityDisplay(
             ) {
                 if (showLocationSection) {
                     item {
-                        CurrentLocationSection(city, navController, cityInfoViewModel, isPortrait)
+                        CurrentLocationSection(
+                            city = city,
+                            navController = navController,
+                            cityInfoViewModel = cityInfoViewModel,
+                            isPortrait = isPortrait,
+                            onRefresh = refreshLocation
+                        )
                     }
                 }
 
@@ -629,7 +757,13 @@ fun actualCityDisplay(
                             .weight(1f)
                             .fillMaxHeight()
                     ) {
-                        CurrentLocationSection(city, navController, cityInfoViewModel, isPortrait)
+                        CurrentLocationSection(
+                            city = city,
+                            navController = navController,
+                            cityInfoViewModel = cityInfoViewModel,
+                            isPortrait = isPortrait,
+                            onRefresh = refreshLocation
+                        )
                     }
                 }
 
@@ -677,7 +811,8 @@ private fun CurrentLocationSection(
     city: CityInfo,
     navController: NavController,
     cityInfoViewModel: CityInfoViewModel,
-    isPortrait: Boolean
+    isPortrait: Boolean,
+    onRefresh: () -> Unit
 ) {
     if (city.country.isNullOrEmpty()) {
         Card(
@@ -690,13 +825,21 @@ private fun CurrentLocationSection(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = "Localisation non disponible",
+                    text = "Localisation non disponible pour votre position",
                     style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
                 )
+                Button(
+                    onClick = onRefresh,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Rafraîchir")
+                }
             }
         }
     } else {
@@ -808,7 +951,10 @@ private fun NoInternetCard() {
 }
 
 @Composable
-private fun LocationDisabledCard(navController: NavController) {
+private fun LocationDisabledCard(
+    navController: NavController,
+    onRefresh: () -> Unit
+) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -819,7 +965,8 @@ private fun LocationDisabledCard(navController: NavController) {
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
                 text = "Localisation désactivée",
@@ -830,7 +977,8 @@ private fun LocationDisabledCard(navController: NavController) {
             Text(
                 text = "Pour afficher la météo de votre ville, veuillez activer la localisation.",
                 style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
             )
             Spacer(modifier = Modifier.height(16.dp))
             Button(
@@ -841,6 +989,12 @@ private fun LocationDisabledCard(navController: NavController) {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Activer la Localisation")
+            }
+            Button(
+                onClick = onRefresh,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Rafraîchir")
             }
         }
     }

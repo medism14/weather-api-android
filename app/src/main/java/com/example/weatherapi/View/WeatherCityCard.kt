@@ -157,8 +157,9 @@ fun WeatherCityCard(
                     )
 
                     Column {
+                        // Afficher d'abord le pays
                         Text(
-                            text = city.name ?: "Localisation inconnue",
+                            text = city.country ?: "Pays inconnu",
                             color = Color.White,
                             style = if (isPortrait) {
                                 MaterialTheme.typography.titleLarge.copy(fontSize = 22.sp)
@@ -170,11 +171,11 @@ fun WeatherCityCard(
                             overflow = TextOverflow.Ellipsis
                         )
 
-                        // Afficher les détails de localisation uniquement en mode portrait
+                        // Afficher la ville et l'admin en dessous
                         if (isPortrait) {
                             val detailText = buildString {
-                                if (!city.country.isNullOrBlank()) {
-                                    append(city.country)
+                                if (!city.name.isNullOrBlank()) {
+                                    append(city.name)
                                     if (!city.admin1.isNullOrBlank()) append(" (${city.admin1})")
                                 }
                             }
