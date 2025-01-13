@@ -234,8 +234,7 @@ fun WeatherCityCard(
             ) {
                 // Température
                 if (i >= 0) {
-                    val temp = city.weatherInfo?.hourly?.temperature_2m?.get(i)
-                    if (temp != null) {
+                    city.weatherInfo?.hourly?.temperature_2m?.getOrNull(i)?.let { temp ->
                         Text(
                             text = "${temp.toInt()}°",
                             color = Color.White,
@@ -254,7 +253,7 @@ fun WeatherCityCard(
                     horizontalAlignment = Alignment.End,
                     verticalArrangement = Arrangement.spacedBy(if (isPortrait) 8.dp else 4.dp)
                 ) {
-                    val isRainy = city.weatherInfo?.hourly?.rain?.get(i) ?: 0.0 > 0
+                    val isRainy = city.weatherInfo?.hourly?.rain?.getOrNull(i)?.toDouble() ?: 0.0 > 0
                     Text(
                         text = if (isRainy) "$pluieEmoji Pluvieux" else "$ensoleilleEmoji Ensoleillé",
                         style = if (isPortrait) {
@@ -265,8 +264,7 @@ fun WeatherCityCard(
                         color = Color.White
                     )
 
-                    val windSpeed = city.weatherInfo?.hourly?.wind_speed_10m?.get(i)
-                    if (windSpeed != null) {
+                    city.weatherInfo?.hourly?.wind_speed_10m?.getOrNull(i)?.let { windSpeed ->
                         Text(
                             text = "$ventEmoji ${windSpeed.toInt()} km/h",
                             color = Color.White.copy(alpha = 0.8f),

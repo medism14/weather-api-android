@@ -51,6 +51,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
+import java.time.LocalDateTime
+import kotlinx.coroutines.delay
 
 @Composable
 fun WeatherScreen(
@@ -258,15 +260,59 @@ fun WeatherScreen(
     }
 
     LaunchedEffect(Unit) {
-        isLoadingFavorites = true  // Mettre isLoadingFavorites à true avant la requête
+        isLoadingFavorites = true
         try {
             db.cityInfoDao().getAllCities().collect { cities ->
+                // Mettre à jour les données si nécessaire au chargement initial
+                if (internetConnection) {
+                    val updatedCities = cities.map { city ->
+                        if (isWeatherDataOutdated(city)) {
+                            try {
+                                controller.fetchWeatherData(city)
+                            } catch (e: Exception) {
+                                println("Erreur lors de la mise à jour de ${city.name}: ${e.message}")
+                                city
+                            }
+                        } else {
+                            city
+                        }
+                    }
+                    
+                    // Mettre à jour la base de données avec les nouvelles données
+                    updatedCities.forEach { city ->
+                        try {
+                            db.cityInfoDao().insertCity(city)
+                        } catch (e: Exception) {
+                            println("Erreur lors de la sauvegarde de ${city.name}: ${e.message}")
+                        }
+                    }
+                }
                 favoritesList = cities
                 isLoadingFavorites = false
             }
         } catch (e: Exception) {
             println("Erreur lors du chargement des favoris : ${e.message}")
             isLoadingFavorites = false
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            try {
+                if (internetConnection) {
+                    db.cityInfoDao().getAllCities().collect { cities ->
+                        cities.forEach { city ->
+                            if (isWeatherDataOutdated(city)) {
+                                val updatedCity = controller.fetchWeatherData(city)
+                                db.cityInfoDao().insertCity(updatedCity)
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                println("Erreur lors de la mise à jour des favoris : ${e.message}")
+            }
+            delay(30 * 60 * 1000) // Vérifier toutes les 30 minutes
         }
     }
 
@@ -283,6 +329,25 @@ fun WeatherScreen(
                     var resultExist = searchResultDao.getSearchById(cleanedQuery)
 
                     if (resultExist != null) {
+                        // Vérifier si les données météo sont à jour
+                        val needsUpdate = resultExist.listCityInfo.any { isWeatherDataOutdated(it) }
+                        
+                        if (needsUpdate && internetConnection) {
+                            // Mettre à jour les données et sauvegarder
+                            val updatedCities = resultExist.listCityInfo.map { city ->
+                                if (isWeatherDataOutdated(city)) {
+                                    controller.fetchWeatherData(city)
+                                } else {
+                                    city
+                                }
+                            }
+                            resultExist = resultExist.copy(
+                                listCityInfo = updatedCities,
+                                entranceAt = LocalDateTime.now()
+                            )
+                            searchResultDao.insertSearch(resultExist)
+                        }
+                        
                         onSearch = true
                         filteredCities = resultExist.listCityInfo.toMutableList()
                     } else if (!internetConnection) {
@@ -300,6 +365,35 @@ fun WeatherScreen(
                 }
             }
             enterPressed = false
+        }
+    }
+
+    LaunchedEffect(favoritesList) {
+        favoritesList.forEach { city ->
+            try {
+                if ((city.weatherInfo == null || isWeatherDataOutdated(city)) && internetConnection) {
+                    val updatedCity = controller.fetchWeatherData(city)
+                    db.cityInfoDao().insertCity(updatedCity)
+                }
+            } catch (e: Exception) {
+                println("Erreur lors du chargement des données météo : ${e.message}")
+            }
+        }
+    }
+
+    LaunchedEffect(filteredCities) {
+        filteredCities.forEach { city ->
+            try {
+                if ((city.weatherInfo == null || isWeatherDataOutdated(city)) && internetConnection) {
+                    val updatedCity = controller.fetchWeatherData(city)
+                    val index = filteredCities.indexOf(city)
+                    if (index != -1) {
+                        filteredCities[index] = updatedCity
+                    }
+                }
+            } catch (e: Exception) {
+                println("Erreur lors du chargement des données météo : ${e.message}")
+            }
         }
     }
 
@@ -997,5 +1091,27 @@ private fun LocationDisabledCard(
                 Text("Rafraîchir")
             }
         }
+    }
+}
+
+// Ajouter une fonction pour vérifier si les données météo sont périmées
+private fun isWeatherDataOutdated(city: CityInfo): Boolean {
+    val weatherInfo = city.weatherInfo ?: return true
+    
+    // Vérifier si on a des données horaires
+    val times = weatherInfo.hourly?.time ?: return true
+    if (times.isEmpty()) return true
+    
+    try {
+        // Obtenir la dernière date des prévisions
+        val lastForecastTime = LocalDateTime.parse(times.last())
+        val currentTime = LocalDateTime.now()
+        
+        // Si la dernière prévision est passée ou dans moins de 12h, les données sont périmées
+        return currentTime.isAfter(lastForecastTime) || 
+               currentTime.plusHours(12).isAfter(lastForecastTime)
+    } catch (e: Exception) {
+        println("Erreur lors de la vérification des données météo : ${e.message}")
+        return true
     }
 }

@@ -325,28 +325,41 @@ fun CityTemperature(city: CityInfo?, i: Int, isPortrait: Boolean) {
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.Bottom
     ) {
-        Text(
-            text = "${city?.weatherInfo?.hourly?.temperature_2m?.get(i)}",
-            color = Color.White,
-            style = MaterialTheme.typography.displayLarge.copy(
-                fontSize = if (isPortrait) 120.sp else 80.sp,
-                fontWeight = FontWeight.ExtraBold,
-                shadow = Shadow(
-                    color = Color.Black.copy(alpha = 0.2f),
-                    offset = Offset(2f, 2f),
-                    blurRadius = 4f
+        // Sécuriser l'accès à la température
+        city?.weatherInfo?.hourly?.temperature_2m?.getOrNull(i)?.let { temp ->
+            Text(
+                text = "${temp.toInt()}", // Convertir en entier pour éviter les décimales
+                color = Color.White,
+                style = MaterialTheme.typography.displayLarge.copy(
+                    fontSize = if (isPortrait) 120.sp else 80.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    shadow = Shadow(
+                        color = Color.Black.copy(alpha = 0.2f),
+                        offset = Offset(2f, 2f),
+                        blurRadius = 4f
+                    )
                 )
             )
-        )
-        Text(
-            text = "°C",
-            color = Color.White,
-            style = MaterialTheme.typography.headlineMedium.copy(
-                fontSize = if (isPortrait) 32.sp else 24.sp,
-                fontWeight = FontWeight.Bold
-            ),
-            modifier = Modifier.padding(bottom = if (isPortrait) 24.dp else 16.dp)
-        )
+            Text(
+                text = "°C",
+                color = Color.White,
+                style = MaterialTheme.typography.headlineMedium.copy(
+                    fontSize = if (isPortrait) 32.sp else 24.sp,
+                    fontWeight = FontWeight.Bold
+                ),
+                modifier = Modifier.padding(bottom = if (isPortrait) 24.dp else 16.dp)
+            )
+        } ?: run {
+            // Afficher un message si la température n'est pas disponible
+            Text(
+                text = "--",
+                color = Color.White,
+                style = MaterialTheme.typography.displayLarge.copy(
+                    fontSize = if (isPortrait) 120.sp else 80.sp,
+                    fontWeight = FontWeight.ExtraBold
+                )
+            )
+        }
     }
 }
 
@@ -404,29 +417,32 @@ fun WeatherRow(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "$ventEmoji",
+                text = ventEmoji,
                 style = TextStyle(fontSize = 30.sp)
             )
 
-            Text(
-                text = "${city?.weatherInfo?.hourly?.wind_speed_10m?.get(i)} km/h",
-                color = Color.White,
-                style = TextStyle(fontSize = 20.sp)
-            )
+            city?.weatherInfo?.hourly?.wind_speed_10m?.getOrNull(i)?.let { windSpeed ->
+                Text(
+                    text = "$windSpeed km/h",
+                    color = Color.White,
+                    style = TextStyle(fontSize = 20.sp)
+                )
+            }
         }
 
         Row(
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (city?.weatherInfo?.hourly?.rain?.get(i) ?: 0.0 > 0) {
-                Text(text = "$pluieEmoji", style = TextStyle(fontSize = 30.sp))
+            val isRainy = city?.weatherInfo?.hourly?.rain?.getOrNull(i)?.toDouble() ?: 0.0 > 0
+            if (isRainy) {
+                Text(text = pluieEmoji, style = TextStyle(fontSize = 30.sp))
                 Text(
                     text = "Pluvieux",
                     color = Color.White,
                     style = TextStyle(fontSize = 20.sp)
                 )
             } else {
-                Text(text = "$ensoleilleEmoji", style = TextStyle(fontSize = 30.sp))
+                Text(text = ensoleilleEmoji, style = TextStyle(fontSize = 30.sp))
                 Text(
                     text = "Ensoleillé",
                     color = Color.White,
@@ -438,7 +454,13 @@ fun WeatherRow(
 }
 
 @Composable
-fun WeatherRow2(city: CityInfo?, temperatureEmoji: String, humiditeEmoji: String, i: Int, isPortrait: Boolean) {
+fun WeatherRow2(
+    city: CityInfo?, 
+    temperatureEmoji: String, 
+    humiditeEmoji: String, 
+    i: Int, 
+    isPortrait: Boolean
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -449,30 +471,34 @@ fun WeatherRow2(city: CityInfo?, temperatureEmoji: String, humiditeEmoji: String
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "$temperatureEmoji",
+                text = temperatureEmoji,
                 style = TextStyle(fontSize = 30.sp)
             )
 
-            Text(
-                text = "${city?.weatherInfo?.hourly?.apparent_temperature?.get(i)}%",
-                color = Color.White,
-                style = TextStyle(fontSize = 20.sp)
-            )
+            city?.weatherInfo?.hourly?.apparent_temperature?.getOrNull(i)?.let { temp ->
+                Text(
+                    text = "$temp%",
+                    color = Color.White,
+                    style = TextStyle(fontSize = 20.sp)
+                )
+            }
         }
 
         Row(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "$humiditeEmoji",
+                text = humiditeEmoji,
                 style = TextStyle(fontSize = 30.sp)
             )
 
-            Text(
-                text = "${city?.weatherInfo?.hourly?.relative_humidity_2m?.get(i)}%",
-                color = Color.White,
-                style = TextStyle(fontSize = 20.sp)
-            )
+            city?.weatherInfo?.hourly?.relative_humidity_2m?.getOrNull(i)?.let { humidity ->
+                Text(
+                    text = "$humidity%",
+                    color = Color.White,
+                    style = TextStyle(fontSize = 20.sp)
+                )
+            }
         }
     }
 }
@@ -489,40 +515,29 @@ fun WeatherPrevisionsList(
     val indexTimeList = mutableListOf<Int>()
     val currentHour = LocalDateTime.now().hour
 
+    // Sécuriser l'accès aux données temporelles
     city?.weatherInfo?.hourly?.time?.let { timeList ->
-        timeList.forEachIndexed { index, time ->
-            // Afficher les prévisions pour les 24 prochaines heures à partir de l'heure actuelle
+        timeList.forEachIndexed { index, _ ->
             if (index > i && index < i + 24) {
                 indexTimeList.add(index)
             }
         }
     }
 
-    // Affichage avec LazyRow
     LazyRow(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = if (isPortrait) 8.dp else 16.dp),
         horizontalArrangement = Arrangement.spacedBy(if (isPortrait) 8.dp else 12.dp)
     ) {
-        // Utilisation de itemsIndexed pour accéder à l'index et à l'élément
-        itemsIndexed(indexTimeList) { indexInList, index ->
-            val time = city?.weatherInfo?.hourly?.time?.get(index)
-            val temperature =
-                city?.weatherInfo?.hourly?.temperature_2m?.get(index)?.toString() ?: "--"
-            val weatherCondition = city?.weatherInfo?.hourly?.rain?.get(index)
-                ?: 0.0
-            val windSpeed = city?.weatherInfo?.hourly?.wind_speed_10m?.get(index) ?: 0.0
+        itemsIndexed(indexTimeList) { _, index ->
+            // Sécuriser l'accès à toutes les données
+            val time = city?.weatherInfo?.hourly?.time?.getOrNull(index)
+            val temperature = city?.weatherInfo?.hourly?.temperature_2m?.getOrNull(index)?.toString() ?: "--"
+            val weatherCondition = city?.weatherInfo?.hourly?.rain?.getOrNull(index)?.toDouble() ?: 0.0
 
-            var emoji: String;
+            val emoji = if (weatherCondition > 0.0) pluieEmoji else ensoleilleEmoji
 
-            if (weatherCondition > 0.0) {
-                emoji = pluieEmoji
-            } else {
-                emoji = ensoleilleEmoji
-            }
-
-            // Carte de prévision pour chaque heure
             WeatherPrevisionCard(
                 hourAndMinutes = time?.substring(11, 16) ?: "--:--",
                 temperature = temperature,

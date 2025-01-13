@@ -163,5 +163,28 @@ class WeatherController (private val searchResultDao: SearchResultDao)  {
         }
         return CityInfo()
     }
+
+    suspend fun fetchWeatherData(city: CityInfo): CityInfo {
+        return try {
+            val responseWeather: HttpResponse = client.get("https://api.open-meteo.com/v1/forecast") {
+                parameter("latitude", city.latitude)
+                parameter("longitude", city.longitude)
+                parameter("hourly", "temperature_2m,relative_humidity_2m,rain,wind_speed_10m,apparent_temperature")
+                parameter("models", "meteofrance_seamless")
+            }
+
+            if (responseWeather.status.value in 200..299) {
+                val responseBodyWeather = responseWeather.bodyAsText()
+                val weatherInfo = gson.fromJson(responseBodyWeather, WeatherModel::class.java)
+                city.copy(weatherInfo = weatherInfo)
+            } else {
+                logger.log(Level.WARNING, "Erreur de réponse pour la météo : ${responseWeather.status.value}")
+                city
+            }
+        } catch (e: Exception) {
+            logger.log(Level.SEVERE, "Erreur lors de la récupération des données météo", e)
+            city
+        }
+    }
 }
 

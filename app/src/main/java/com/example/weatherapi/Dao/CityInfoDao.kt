@@ -20,4 +20,7 @@ interface CityInfoDao {
 
     @Query("DELETE FROM favorites_city_info")
     suspend fun deleteAll()
+
+    @Update
+    suspend fun updateCity(cityInfo: CityInfo)
 }
